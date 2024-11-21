@@ -220,6 +220,8 @@
 /*  If you use the hardware made by Dante DO7JBH with a Teensy 4.1 adapter [https://github.com/do7jbh/SSR-2], uncomment the next line */
 #define HARDWARE_DO7JBH_T41
 
+#define HARDWARE_F1FGV
+
 /* only for debugging */
 //#define DEBUG
 
@@ -244,7 +246,7 @@
     recommendation: leave this uncommented */
 #define USE_ATAN2FAST
 
-#define MP3 
+//#define MP3 
 
 #if defined(__IMXRT1062__)
 #define T4
@@ -277,16 +279,38 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #include <arm_math.h>
 #include <arm_const_structs.h>
 #include <si5351.h>
+
+#if defined(HARDWARE_F1FGV)
+//#include <Bounce2.h>
+#include <Encoder.h>
+#else
 //#include <Encoder.h> // try empirically which lib works best for your encoders !
 #include <EncoderBounce.h> // https://github.com/FrankBoesing/EncoderBounce, does not work with my cheap chinese encoders ... but works perfectly with Alps encoders (which cost 10 times more) DD4WH
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #if defined(T4)
+#if defined(HARDWARE_F1FGV)
+#include <RA8875.h>
+#define ILI9341_WHITE RA8875_WHITE
+#define ILI9341_RED   RA8875_RED
+#define ILI9341_ORANGE 0xFD20      /* 255, 165,   0 */
+#define ILI9341_YELLOW RA8875_YELLOW
+#define ILI9341_GREEN   RA8875_GREEN
+#define ILI9341_BLACK   RA8875_BLACK
+#define ILI9341_BLUE   RA8875_BLUE
+#define ILI9341_NAVY   0x000F      /*   0,   0, 128 */
+#define ILI9341_MAROON   0x7800      /* 128,   0,   0 */
+#define ILI9341_MAGENTA   0xF81F      /* 255,   0, 255 */
+#define ILI9341_DARKGREY  0x7BEF      /* 128, 128, 128 */
+#define ILI9341_DARKGREEN 0x03E0      /*   0, 128,   0 */
+#else
 #include <ILI9341_t3n.h>
 #include <ili9341_t3n_font_Arial.h>
+#endif
 #else
 #include <ILI9341_t3.h>
 #include "font_Arial.h"
@@ -908,6 +932,12 @@ Si5351 si5351;
 // prop shield LC used for audio speaker amp
 //#define AUDIO_AMP_ENABLE 39
 
+#if defined(HARDWARE_F1FGV)
+#define RA8875_RESET 9                                      // RA8875
+#define RA8875_CS 10                                        // RA8875
+#define RA8875_INT        2                                 // reliée à la 33 du bornier RA8875 , relier aussi les 34 à SDA0 et 35 à SCL0
+RA8875 tft = RA8875(RA8875_CS,RA8875_RESET);
+#else
 #if (defined(T4))
 #define BACKLIGHT_PIN   6  // cut PCB trace to 3V3 and new wire soldered from TFT backlight to pin6 on DO7JBHs PCB 
 #define TFT_DC          34 // 20
@@ -926,6 +956,7 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_M
 #define TFT_SCLK        14
 #define TFT_MISO        12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
+#endif
 #endif
 
 // push-buttons
@@ -1054,6 +1085,9 @@ Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
 float DD4WH_RF_gain = 6.0;
+
+#elif defined(HARDWARE_F1FGV)
+
 
 #else
 // Optical Encoder connections
