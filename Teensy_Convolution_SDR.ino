@@ -385,6 +385,7 @@ class RA8875_adaptor: public RA8875 {
   }
   bool updateScreenAsync(bool update_cont)
   {
+    return true;
   }
 };
 
