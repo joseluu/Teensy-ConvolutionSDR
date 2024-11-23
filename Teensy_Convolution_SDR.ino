@@ -522,7 +522,7 @@ float dcfRefLevel;
 //#define font Arial_6
 int termCursorXpos = 0;
 int termCursorYpos = 0;
-uint16_t termColor = 0x10000;
+uint16_t termColor = 0x0000; // previous value was 0x10000 which does not fit a uint_16
 
 char termCharStore[termNcols][termNrows] ;
 int16_t termCharColorStore[termNcols][termNrows] ;
@@ -622,7 +622,7 @@ typedef struct
 {
     rtty_speed_t id;
     float32_t value;
-    char* label;
+    const char* label;
 } rtty_speed_item_t;
 
 // TODO: Probably we should define just a few for the various value types and let
@@ -631,7 +631,7 @@ typedef struct
 {
     rtty_shift_t id;
     uint32_t value;
-    char* label;
+    const char* label;
 } rtty_shift_item_t;
 
 typedef struct
@@ -1711,7 +1711,7 @@ float32_t I_old = 0.2;
 float32_t Q_old = 0.2;
 float32_t rawFM_old_L = 0.0;
 float32_t rawFM_old_R = 0.0;
-const uint32_t WFM_BLOCKS = 8;
+#define WFM_BLOCKS 8
 uint32_t UKW_spectrum_offset = 0;
 
 #define WFM_SAMPLE_RATE_NORM    (TWO_PI / WFM_SAMPLE_RATE) //to normalize Hz to radians
@@ -2016,7 +2016,7 @@ float32_t DMAMEM FIR_WFM_Q_state [WFM_BLOCKS * BUFFER_SIZE + FIR_WFM_num_taps - 
   624.6850061499508230E-6, 0.002708497910576767, 463.7277605032298310E-6, -0.002993671768455668, 0.002974399474225367, 0.001851944115674062, -0.008023223272215739, 0.006351672953904165, 0.006981175200321031, -0.019534687805473273, 0.010792340741888977, 0.021004722459631749, -0.043391183038594551, 0.015053012768562642, 0.061299026906325028, -0.111919636212113038, 0.017679746690378837, 0.540918306257059944, 0.540918306257059944, 0.017679746690378837, -0.111919636212113038, 0.061299026906325028, 0.015053012768562642, -0.043391183038594551, 0.021004722459631749, 0.010792340741888977, -0.019534687805473273, 0.006981175200321031, 0.006351672953904165, -0.008023223272215739, 0.001851944115674062, 0.002974399474225367, -0.002993671768455668, 463.7277605032298310E-6, 0.002708497910576767, 624.6850061499508230E-6
 };*/
 
-const float32_t FIR_WFM_Coef[] =
+float32_t FIR_WFM_Coef[] =
 #if 0
 { // FIR Parks, Kaiser window, Iowa Hills FIR Filter designer, DD4WH, 14.4.2020
   // Fs = 256kHz, Fc = 90kHz, Kaiser beta 4.0, 36 taps, transition width 0.1
@@ -4072,7 +4072,7 @@ void loop() {
 
 //Tisho
 #if defined (HARDWARE_DO7JBH_T41)
-  for (int i = 0; i < (BUFFER_SIZE * N_BLOCKS) / 2; i++)
+  for (unsigned int i = 0; i < (BUFFER_SIZE * N_BLOCKS) / 2; i++)
   {
       float_buffer_L_T[i] = float_buffer_L[i*2];
       float_buffer_R_T[i] = float_buffer_R[i*2];
@@ -7870,7 +7870,7 @@ void Zoom_FFT_exe (uint32_t blockSize)
   static float32_t FFT_ring_buffer_y[256];
   static float32_t high_Zoom_buffer_x[256];
   static float32_t high_Zoom_buffer_y[256];
-  static int32_t flag_2nd_decimation = 0;
+  static uint32_t flag_2nd_decimation = 0;
   static uint32_t high_Zoom_buffer_ptr = 0;
   uint8_t high_Zoom = 0;
   uint32_t high_Zoom_2nd_dec_rounds = (1 << (spectrum_zoom - 11));
@@ -14116,7 +14116,7 @@ void alt_noise_blanking(float* insamp, int Nsam, float* E )
   float32_t lpc_power;
   float32_t impulse_threshold;
   int impulse_positions[20];  //we allow a maximum of 5 impulses per frame
-  int search_pos = 0;
+  unsigned int search_pos = 0;
   int impulse_count = 0;
   //    static float32_t last_frame_end[order+PL]; //this takes the last samples from the previous frame to do the prediction within the boundaries
   static float32_t last_frame_end[80]; //this takes the last samples from the previous frame to do the prediction within the boundaries
@@ -14220,6 +14220,10 @@ void alt_noise_blanking(float* insamp, int Nsam, float* E )
   //Serial.println("Noise Blanker working");
 
   //alternative levinson durben algorithm to calculate the lpc coefficients from the crosscorrelation
+
+  for (unsigned int i=0; i < sizeof(R)/sizeof(float32_t); i++){ // initialize R before use
+    R[i] = 0.0;
+  }
 
   R[0] = R[0] * (1.0 + 1.0e-9);
 
@@ -14530,7 +14534,7 @@ void SSB_AUTOTUNE_est(int n, float xr[], float xi[], float smpfrq,
   float tau; /* sampling_frequency/speaker_pitch                */
   float cf1, cf2; /* coefficients for parabolic interpolation    */
   float partr, parti; /* real, imag, parts of ccor peak          */
-  float angl; /* Shift_angle in radians versus speaker pitch    */
+  float angl = 0.0; /* Shift_angle in radians versus speaker pitch    */
 
   lolim = 50; /* Assumes speaker pitch >= 50 Hz */
   hilim = 250; /* Assumes speaker pitch <= 250 Hz */
@@ -16304,7 +16308,7 @@ uint8_t CwGen_CharacterIdFunc(uint32_t code)
     out = 0xfe;
   }
 
-  for (int i = 0; i<CW_CHAR_CODES; i++)
+  for (unsigned int i = 0; i<CW_CHAR_CODES; i++)
   {
     if (cw_char_codes[i] == code) {
       out = cw_char_chars[i];
@@ -16314,7 +16318,7 @@ uint8_t CwGen_CharacterIdFunc(uint32_t code)
 
   if (out == 0xff)
   {
-    for (int i = 0; i<CW_SIGN_CODES; i++)
+    for (unsigned int i = 0; i<CW_SIGN_CODES; i++)
     {
       if (cw_sign_codes[i] == code) {
         out = cw_sign_onechar[i];
@@ -16696,7 +16700,7 @@ void termSetColor(int16_t color){
     }
   }
   
-void termPutStr(char *cp){
+void termPutStr(const char *cp){
   while(*cp){
     termPutChar(*cp++) ;
     }
@@ -17651,7 +17655,6 @@ void initTempMon(uint16_t freq, uint32_t lowAlarmTemp, uint32_t highAlarmTemp, u
 {
   
   uint32_t calibrationData;
-  uint32_t roomCount;
   uint32_t mode1;
       
   //first power on the temperature sensor - no register change
