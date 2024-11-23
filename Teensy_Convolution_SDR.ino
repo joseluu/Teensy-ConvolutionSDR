@@ -295,6 +295,97 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #if defined(T4)
 #if defined(HARDWARE_F1FGV)
 #include <RA8875.h>
+class RA8875_adaptor: public RA8875 {
+  using RA8875::RA8875;  // inherit constructors
+  public:
+
+  int16_t drawNumber(long long_num, int poX, int poY) {
+    char str[14];
+    ltoa(long_num, str, 10);
+    return drawString(str, poX, poY);
+  }
+  int16_t drawFloat(float floatNumber, int dp, int poX, int poY) {
+    char str[14];         // Array to contain decimal string
+    uint8_t ptr = 0;      // Initialise pointer for array
+    int8_t digits = 1;    // Count the digits to avoid array overflow
+    float rounding = 0.5; // Round up down delta
+
+    if (dp > 7)
+      dp = 7; // Limit the size of decimal portion
+
+    // Adjust the rounding value
+    for (uint8_t i = 0; i < dp; ++i)
+      rounding /= 10.0f;
+
+    if (floatNumber < -rounding) // add sign, avoid adding - sign to 0.0!
+    {
+      str[ptr++] = '-'; // Negative number
+      str[ptr] = 0;     // Put a null in the array as a precaution
+      digits =
+          0; // Set digits to 0 to compensate so pointer value can be used later
+      floatNumber = -floatNumber; // Make positive
+    }
+
+    floatNumber += rounding; // Round up or down
+
+    // For error put ... in string and return (all TFT_ILI9341_ESP library fonts
+    // contain . character)
+    if (floatNumber >= 2147483647) {
+      strcpy(str, "...");
+      // return drawString(str, poX, poY);
+    }
+    // No chance of overflow from here on
+
+    // Get integer part
+    unsigned long temp = (unsigned long)floatNumber;
+
+    // Put integer part into array
+    ltoa(temp, str + ptr, 10);
+
+    // Find out where the null is to get the digit count loaded
+    while ((uint8_t)str[ptr] != 0)
+      ptr++;       // Move the pointer along
+    digits += ptr; // Count the digits
+
+    str[ptr++] = '.'; // Add decimal point
+    str[ptr] = '0';   // Add a dummy zero
+    str[ptr + 1] =
+        0; // Add a null but don't increment pointer so it can be overwritten
+
+    // Get the decimal portion
+    floatNumber = floatNumber - temp;
+
+    // Get decimal digits one by one and put in array
+    // Limit digit count so we don't get a false sense of resolution
+    uint8_t i = 0;
+    while ((i < dp) &&
+          (digits <
+            9)) // while (i < dp) for no limit but array size must be increased
+    {
+      i++;
+      floatNumber *= 10;  // for the next decimal
+      temp = floatNumber; // get the decimal
+      ltoa(temp, str + ptr, 10);
+      ptr++;
+      digits++;            // Increment pointer and digits count
+      floatNumber -= temp; // Remove that digit
+    }
+
+    // Finally we can plot the string and return pixel length
+    return drawString(str, poX, poY);
+  }
+  int16_t drawString(const char string[], int poX, int poY) {
+    int16_t len = strlen(string);
+    setCursor(poX, poY, false);
+    write(string, len);
+  }
+  uint8_t useFrameBuffer(boolean b){
+  }
+  bool updateScreenAsync(bool update_cont)
+  {
+  }
+};
+
 #define ILI9341_WHITE RA8875_WHITE
 #define ILI9341_RED   RA8875_RED
 #define ILI9341_ORANGE 0xFD20      /* 255, 165,   0 */
@@ -305,6 +396,7 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #define ILI9341_NAVY   0x000F      /*   0,   0, 128 */
 #define ILI9341_MAROON   0x7800      /* 128,   0,   0 */
 #define ILI9341_MAGENTA   0xF81F      /* 255,   0, 255 */
+#define ILI9341_LIGHTGREY  0xC618      /* 192, 192, 192 */
 #define ILI9341_DARKGREY  0x7BEF      /* 128, 128, 128 */
 #define ILI9341_DARKGREEN 0x03E0      /*   0, 128,   0 */
 #else
@@ -935,8 +1027,26 @@ Si5351 si5351;
 #if defined(HARDWARE_F1FGV)
 #define RA8875_RESET 9                                      // RA8875
 #define RA8875_CS 10                                        // RA8875
+#define TFT_CS RA8875_CS
 #define RA8875_INT        2                                 // reliée à la 33 du bornier RA8875 , relier aussi les 34 à SDA0 et 35 à SCL0
-RA8875 tft = RA8875(RA8875_CS,RA8875_RESET);
+RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
+#include <gfxfont.h>
+// get your fonts from here: https://rop.nl/truetype2gfx/
+#include "FreeSans8pt7b.h"
+#include "FreeSans9pt7b.h"
+#include "FreeSans10pt7b.h"
+#include "FreeSans11pt7b.h"
+#include "FreeSans12pt7b.h"
+#include "FreeSans14pt7b.h"
+#include "FreeSans18pt7b.h"
+#define Arial_8 &FreeSans8pt7b
+#define Arial_9 &FreeSans9pt7b
+#define Arial_10 &FreeSans10pt7b
+#define Arial_11 &FreeSans11pt7b
+#define Arial_12 &FreeSans12pt7b
+#define Arial_14 &FreeSans14pt7b
+#define Arial_18 &FreeSans18pt7b
+
 #else
 #if (defined(T4))
 #define BACKLIGHT_PIN   6  // cut PCB trace to 3V3 and new wire soldered from TFT backlight to pin6 on DO7JBHs PCB 
@@ -2919,7 +3029,7 @@ const uint16_t gradient[] = {
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
-PROGMEM
+FLASHMEM
 void flexRamInfo(void)
 { // credit to FrankB, KurtE and defragster !
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)
@@ -2991,7 +3101,7 @@ void flexRamInfo(void)
 #endif
 }
 
-PROGMEM
+FLASHMEM
 void setup() {
 #if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41)
   pinMode(On_set, OUTPUT);
