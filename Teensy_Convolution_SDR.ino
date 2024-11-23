@@ -378,8 +378,10 @@ class RA8875_adaptor: public RA8875 {
     int16_t len = strlen(string);
     setCursor(poX, poY, false);
     write(string, len);
+    return 0; // should return the length in pixels
   }
   uint8_t useFrameBuffer(boolean b){
+    return 0;
   }
   bool updateScreenAsync(bool update_cont)
   {
@@ -3101,7 +3103,7 @@ void flexRamInfo(void)
 #endif
 }
 
-FLASHMEM
+FLASHMEM 
 void setup() {
 #if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41)
   pinMode(On_set, OUTPUT);
