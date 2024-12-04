@@ -10196,11 +10196,10 @@ void setfreq () {
 
     si5351.pll_reset(SI5351_PLLA);
 
-    cli();
+    cli(); // mask interrupts to get precise timing
     si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
     si5351.set_freq_manual(siFrequency - 1000, pll_freq, SI5351_CLK1); // 10Hz lower
-    //delay (20); // or 249 when using 100 wait for the phase to become 90 degrees
-    delayMicroseconds(23400);
+    delayMicroseconds(21000); //  wait for the phase to become -90 degrees
     si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK1);
     sei();
   } else {
