@@ -1091,7 +1091,7 @@ Encoder filter      (2, 3);
 Encoder encoder3      (4, 5);
 
 Si5351 si5351;
-#define MASTER_CLK_MULT  4  // QSD frontend requires 4x clock
+#define MASTER_CLK_MULT  1  // we use 2 channels to generate the quadrature
 
 
 #define RA8875_RESET 9                                      // RA8875
@@ -3919,6 +3919,17 @@ void setup() {
     i2c_found = si5351.init(SI5351_CRYSTAL_LOAD_6PF, Si_5351_crystal, 0);
     delay(10);
   }
+  si5351.reset();
+  si5351.set_correction(16100L, SI5351_PLL_INPUT_XO); // correction is in 1/100 Hz at 10MHz, added to xtal freq, appears substracted from output freq
+  si5351.plla_ref_osc = SI5351_PLL_INPUT_XO;
+  si5351.pllb_ref_osc = SI5351_PLL_INPUT_XO;
+  si5351.set_ms_source(SI5351_CLK0, SI5351_PLLA);
+  si5351.set_ms_source(SI5351_CLK1, SI5351_PLLA);
+  si5351.set_ms_source(SI5351_CLK2, SI5351_PLLB);
+  si5351.drive_strength(SI5351_CLK0,SI5351_DRIVE_8MA); //8MA is 10dBm
+  si5351.drive_strength(SI5351_CLK1,SI5351_DRIVE_8MA);
+  si5351.drive_strength(SI5351_CLK2,SI5351_DRIVE_2MA);
+  Serial.println("si5351 initialized");
 #else
   si5351.init(SI5351_CRYSTAL_LOAD_10PF, Si_5351_crystal, calibration_constant);
   //si5351.drive_strength(Si_5351_clock, Si_5351_drive);
@@ -10144,7 +10155,62 @@ void setfreq () {
   //   hilfsf = (bands[current_band].freq +  IF_FREQ) * 10000000 * MASTER_CLK_MULT * SI5351_FREQ_MULT;
   hilfsf = (bands[current_band].freq +  IF_FREQ * SI5351_FREQ_MULT) * 1000000000 * MASTER_CLK_MULT; // SI5351_FREQ_MULT is 100ULL;
   hilfsf = hilfsf / calibration_factor;
+  #if defined(HARDWARE_F1FGV)
+  #define siFrequency hilfsf
+  #define SERIAL_PRINT_LL(llnumber) Serial.print(llnumber)
+   // compute pll_freq ourselves
+  uint16_t divider;
+  static uint16_t previousDivider;
+  bool bMustChangeDivider;
+  uint64_t pll_freq;
+
+  // check if we have to change Divider
+  bMustChangeDivider = (siFrequency * previousDivider > SI5351_PLL_VCO_MAX || siFrequency * previousDivider < SI5351_PLL_VCO_MIN);
+  if (bMustChangeDivider){
+    divider = 1 + (SI5351_PLL_VCO_MIN + SI5351_PLL_VCO_MAX)/2 * SI5351_FREQ_MULT / siFrequency; // center on pll band
+    divider &=  0xFFFE; // make it even
+    if (divider < 4)
+      divider = 4;
+    previousDivider = divider;
+    Serial.print("new si5351 divider: ");
+    Serial.println(divider);
+  }
+  pll_freq = siFrequency * divider;
+  
+  Serial.print("si5351 pll frequency using current divider: ");
+  SERIAL_PRINT_LL(pll_freq);
+
+  Serial.print(" remainder: ");
+  SERIAL_PRINT_LL(pll_freq % siFrequency);
+  Serial.println("");
+
+  // use the manual interface
+  // Set CLK0 and CLK1 to output using the computed PLL frequency
+  si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
+  si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK1);
+  si5351.set_freq_manual(siFrequency + 10000 * SI5351_FREQ_MULT, pll_freq, SI5351_CLK2); // set test generator 10kHz above
+
+  if (bMustChangeDivider){
+    si5351.set_phase(SI5351_CLK0, 0);
+    si5351.set_phase(SI5351_CLK1, 0);
+
+    si5351.pll_reset(SI5351_PLLA);
+
+    cli();
+    si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
+    si5351.set_freq_manual(siFrequency - 1000, pll_freq, SI5351_CLK1); // 10Hz lower
+    //delay (20); // or 249 when using 100 wait for the phase to become 90 degrees
+    delayMicroseconds(23400);
+    si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK1);
+    sei();
+  } else {
+    si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
+    si5351.set_freq_manual(siFrequency - 1000, pll_freq, SI5351_CLK1);
+  }
+
+  #else
   si5351.set_freq(hilfsf, Si_5351_clock);
+  #endif
   if (bands[current_band].mode == DEMOD_AUTOTUNE)
   {
     autotune_flag = 1;
