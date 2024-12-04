@@ -10159,27 +10159,32 @@ void setfreq () {
   #define siFrequency hilfsf
   #define SERIAL_PRINT_LL(llnumber) Serial.print(llnumber)
    // compute pll_freq ourselves
-  uint16_t divider;
-  static uint16_t previousDivider;
+  static uint16_t currentDivider;
   bool bMustChangeDivider;
   uint64_t pll_freq;
 
+  Serial.print("si5351 requested frequency: ");
+  SERIAL_PRINT_LL(hilfsf / SI5351_FREQ_MULT);
   // check if we have to change Divider
-  bMustChangeDivider = (siFrequency * previousDivider > SI5351_PLL_VCO_MAX || siFrequency * previousDivider < SI5351_PLL_VCO_MIN);
+  bMustChangeDivider = (siFrequency * currentDivider / SI5351_FREQ_MULT > SI5351_PLL_VCO_MAX || siFrequency * currentDivider / SI5351_FREQ_MULT < SI5351_PLL_VCO_MIN);
   if (bMustChangeDivider){
+    uint16_t divider;
     divider = 1 + (SI5351_PLL_VCO_MIN + SI5351_PLL_VCO_MAX)/2 * SI5351_FREQ_MULT / siFrequency; // center on pll band
     divider &=  0xFFFE; // make it even
     if (divider < 4)
       divider = 4;
-    previousDivider = divider;
-    Serial.print("new si5351 divider: ");
-    Serial.println(divider);
+    Serial.print(" previous divider: ");
+    Serial.print(currentDivider);
+    currentDivider = divider;
+    Serial.print(" new divider: ");
+    Serial.print(currentDivider);
   }
-  pll_freq = siFrequency * divider;
+  pll_freq = siFrequency * currentDivider;
   
-  Serial.print("si5351 pll frequency using current divider: ");
-  SERIAL_PRINT_LL(pll_freq);
-
+  Serial.print(" pll frequency: ");
+  SERIAL_PRINT_LL(pll_freq / SI5351_FREQ_MULT);
+  Serial.print(" divider: ");
+  Serial.print(currentDivider);
   Serial.print(" remainder: ");
   SERIAL_PRINT_LL(pll_freq % siFrequency);
   Serial.println("");
