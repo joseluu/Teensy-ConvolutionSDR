@@ -218,7 +218,9 @@
 //#define HARDWARE_DO7JBH
 
 /*  If you use the hardware made by Dante DO7JBH with a Teensy 4.1 adapter [https://github.com/do7jbh/SSR-2], uncomment the next line */
-#define HARDWARE_DO7JBH_T41
+//#define HARDWARE_DO7JBH_T41
+
+#define HARDWARE_DISPLAY_RA8875
 
 #define HARDWARE_F1FGV
 
@@ -232,7 +234,7 @@
 /*  only for support of the hardware RF frontend filters designed by Bob Larkin, W7PUA
     http://www.janbob.com/electron/FilterBP1/FiltBP1.html
     adjust cutoff frequencies according to your needs in function setfreq */
-#define USE_BOBS_FILTER
+//#define USE_BOBS_FILTER
 
 /*  flag to indicate to use the changes introduced by Bob Larkin, W7PUA
     recommendation: leave this uncommented */
@@ -248,6 +250,8 @@
 
 //#define MP3 
 
+#define USE_METRO
+
 #if defined(__IMXRT1062__)
 #define T4
 #endif
@@ -259,7 +263,7 @@ extern "C"
   void sincos(double err, double *s, double *c);
 }
 
-#if (defined(T4))
+#if defined(T4)
 extern "C" 
 uint32_t set_arm_clock(uint32_t frequency);
 // lowering this from 600MHz to 200MHz makes power consumption @5 Volts about 40mA less -> 200mWatts less
@@ -271,10 +275,14 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #include <Audio.h>
 //#include <Time.h>
 #include <TimeLib.h>
-#include <Wire.h>
-#include <SPI.h>
+//#include <Wire.h>
+//#include <SPI.h>
+#if defined(MP3)
 #include <SD.h>
+#endif
+#if defined(USE_METRO)
 #include <Metro.h>
+#endif
 #include <Bounce.h>
 #include <arm_math.h>
 #include <arm_const_structs.h>
@@ -293,11 +301,17 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #include <string.h>
 
 #if defined(T4)
-#if defined(HARDWARE_F1FGV)
+#if defined(HARDWARE_DISPLAY_RA8875)
+
 #include <RA8875.h>
 class RA8875_adaptor: public RA8875 {
-  using RA8875::RA8875;  // inherit constructors
+
+  //using RA8875::RA8875;  // inherit constructors
   public:
+  RA8875_adaptor(const uint8_t CSp, const uint8_t RSTp) : RA8875(CSp, RSTp) {
+    // Serial.begin(115200);
+    Serial.println("ConvolutionSDR constructing");
+  }
 
   int16_t drawNumber(long long_num, int poX, int poY) {
     char str[14];
@@ -402,11 +416,13 @@ class RA8875_adaptor: public RA8875 {
 #define ILI9341_LIGHTGREY  0xC618      /* 192, 192, 192 */
 #define ILI9341_DARKGREY  0x7BEF      /* 128, 128, 128 */
 #define ILI9341_DARKGREEN 0x03E0      /*   0, 128,   0 */
-#else
+
+#else //HARDWARE_DISPLAY_RA8875
 #include <ILI9341_t3n.h>
 #include <ili9341_t3n_font_Arial.h>
 #endif
-#else
+
+#else // T4
 #include <ILI9341_t3.h>
 #include "font_Arial.h"
 #endif
@@ -420,16 +436,16 @@ class RA8875_adaptor: public RA8875 {
   #define SDCARD_SCK_PIN   13  // not actually used
   #else
   #endif
-#endif
-#include <util/crc16.h> //mdrhere
+#endif //MP3
 
+#include <util/crc16.h> //mdrhere
 
 #if defined(T4)
 #include <utility/imxrt_hw.h> // for setting I2S freq, Thanks, FrankB!
 #include <EEPROM.h>
 #define WFM_SAMPLE_RATE   256000.0f
 //#define WFM_SAMPLE_RATE   234375.0f
-#else
+#else //T4
 #include <EEPROM.h>
 #define F_I2S ((((I2S0_MCR >> 24) & 0x03) == 3) ? F_PLL : F_CPU)
 #define WFM_SAMPLE_RATE   234375.0f
@@ -455,7 +471,7 @@ static uint32_t s_roomC_hotC; /*!< The value of s_roomCount minus s_hotCount.*/
     uint32_t panicAlarmTemp; /*!< The panic alarm temperature.*/
     uint32_t lowAlarmTemp;   /*!< The low alarm */
     float CPU_temperature = 0.0; 
-#endif
+#endif //T4
 
 // CW DECODER STUFF
 #define CW_DECODER_BLOCKSIZE_MIN    8
@@ -984,7 +1000,7 @@ time_t getTeensy3Time()
 // Joris PCB uses a 27MHz crystal and CLOCK 2 output
 // Elektor SDR PCB uses a 25MHz crystal and the CLOCK 1 output
 //#define Si_5351_clock  SI5351_CLK1
-#if defined(HARDWARE_DO7JBH) || defined(HARDWARE_FRANKB) || defined(HARDWARE_DO7JBH_T41) 
+#if defined(HARDWARE_DO7JBH) || defined(HARDWARE_FRANKB) || defined(HARDWARE_DO7JBH_T41) || defined(HARDWARE_F1FGV)
 #define Si_5351_crystal 25000000
 #else
 #define Si_5351_crystal 27000000
@@ -1006,7 +1022,8 @@ unsigned long long hilfsf = 1000000000;
 uint8_t save_energy = 0;
 uint8_t atan2_approx = 1;
 
-#if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41)
+
+#if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41) 
 // Optical Encoder connections
 Encoder tune      (16, 17);
 Encoder filter    (4, 5);
@@ -1027,31 +1044,7 @@ Si5351 si5351;
 // prop shield LC used for audio speaker amp
 //#define AUDIO_AMP_ENABLE 39
 
-#if defined(HARDWARE_F1FGV)
-#define RA8875_RESET 9                                      // RA8875
-#define RA8875_CS 10                                        // RA8875
-#define TFT_CS RA8875_CS
-#define RA8875_INT        2                                 // reliée à la 33 du bornier RA8875 , relier aussi les 34 à SDA0 et 35 à SCL0
-RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
-#include <gfxfont.h>
-// get your fonts from here: https://rop.nl/truetype2gfx/
-#include "FreeSans8pt7b.h"
-#include "FreeSans9pt7b.h"
-#include "FreeSans10pt7b.h"
-#include "FreeSans11pt7b.h"
-#include "FreeSans12pt7b.h"
-#include "FreeSans14pt7b.h"
-#include "FreeSans18pt7b.h"
-#define Arial_8 &FreeSans8pt7b
-#define Arial_9 &FreeSans9pt7b
-#define Arial_10 &FreeSans10pt7b
-#define Arial_11 &FreeSans11pt7b
-#define Arial_12 &FreeSans12pt7b
-#define Arial_14 &FreeSans14pt7b
-#define Arial_18 &FreeSans18pt7b
-
-#else
-#if (defined(T4))
+#if defined(T4)
 #define BACKLIGHT_PIN   6  // cut PCB trace to 3V3 and new wire soldered from TFT backlight to pin6 on DO7JBHs PCB 
 #define TFT_DC          34 // 20
 #define TFT_CS          10 //21
@@ -1060,7 +1053,7 @@ RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
 #define TFT_SCLK        13 //14
 #define TFT_MISO        12
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
-#else
+#else //T4
 #define BACKLIGHT_PIN   0  // unfortunately connected to 3V3 in DO7JBHs PCB 
 #define TFT_DC          20
 #define TFT_CS          21
@@ -1069,17 +1062,71 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_M
 #define TFT_SCLK        14
 #define TFT_MISO        12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
-#endif
+#endif //T4
 #endif
 
 // push-buttons
-#if defined (HARDWARE_DO7JBH)
-#define   BUTTON_1_PIN      A22 // encoder2 button = button3SW
+#if defined(HARDWARE_F1FGV)
+// no buttons, use vanilla set of push buttons for now
+#define   BUTTON_1_PIN      33
+#define   BUTTON_2_PIN      34
+#define   BUTTON_3_PIN      35
+#define   BUTTON_4_PIN      36
+#define   BUTTON_5_PIN      38 // this is the pushbutton pin of the tune encoder
+#define   BUTTON_6_PIN       0 // this is the pushbutton pin of the filter encoder
+#define   BUTTON_7_PIN      37 // this is the menu button pin
+#define   BUTTON_8_PIN       8  //27 // this is the pushbutton pin of encoder 3
+
+Bounce button1 = Bounce(BUTTON_1_PIN, 50);
+Bounce button2 = Bounce(BUTTON_2_PIN, 50);
+Bounce button3 = Bounce(BUTTON_3_PIN, 50);
+Bounce button4 = Bounce(BUTTON_4_PIN, 50);
+Bounce button5 = Bounce(BUTTON_5_PIN, 50);
+Bounce button6 = Bounce(BUTTON_6_PIN, 50);
+Bounce button7 = Bounce(BUTTON_7_PIN, 50);
+Bounce button8 = Bounce(BUTTON_8_PIN, 50);
+
+Encoder tune      (0, 1);
+Encoder filter      (2, 3);
+Encoder encoder3      (4, 5);
+
+Si5351 si5351;
+#define MASTER_CLK_MULT  4  // QSD frontend requires 4x clock
+
+
+#define RA8875_RESET 9                                      // RA8875
+#define RA8875_CS 10                                        // RA8875
+#define TFT_CS RA8875_CS
+#define MAXTOUCHLIMIT     5//1...5
+#define RA8875_INT        2                                 // reliée à la 33 du bornier RA8875 , relier aussi les 34 à SDA0 et 35 à SCL0
+
+RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
+
+#include "font_Arial.h"
+
+extern const ILI9341_t3_font_t Arial_8;
+extern const ILI9341_t3_font_t Arial_9;
+extern const ILI9341_t3_font_t Arial_10;
+extern const ILI9341_t3_font_t Arial_11;
+extern const ILI9341_t3_font_t Arial_12;
+// extern const ILI9341_t3_font_t Arial_13;
+extern const ILI9341_t3_font_t Arial_14;
+// extern const ILI9341_t3_font_t Arial_16;
+extern const ILI9341_t3_font_t Arial_18;
+
+// Button pin definitions (minimal)
+const uint8_t Band1 = 26; // band selection pins for LPF relays, used with 2N7000: HIGH means LPF is activated
+const uint8_t Band2 = 27; // always use only one LPF with HIGH, all others have to be LOW
+
+#elif defined (HARDWARE_DO7JBH)
+#define   BUTTON_1_PIN      22 // encoder2 button = button3SW
 #define   BUTTON_6_PIN      8 // this is the pushbutton pin of the filter encoder
+const int8_t On_set    = 25; // hold switched on
 #elif defined(HARDWARE_DO7JBH_T41)
 #define   BUTTON_1_PIN      41 // encoder2 button = button3SW
 #define   BUTTON_6_PIN      15 //8 // this is the pushbutton pin of the filter encoder
-#endif
+
+
 #define   BUTTON_2_PIN      37 // BAND+ = button2SW
 #define   BUTTON_3_PIN      30 // ???
 #define   BUTTON_4_PIN      36 //
@@ -1098,7 +1145,7 @@ Bounce button6 = Bounce(BUTTON_6_PIN, 50);
 Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
-#elif defined(HARDWARE_FRANKB)
+#elif defined(HARDWARE_FRANKB) // push-buttons
 Si5351 si5351;
 // Optical Encoder connections
 Encoder tune      (2, 3);
@@ -1124,7 +1171,7 @@ Encoder encoder3  (15, 16); //(26, 28);
 #define LED_PIN         13
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 
-#elif defined(HARDWARE_FRANKB2)
+#elif defined(HARDWARE_FRANKB2) // push-buttons
 
 #undef Si_5351_crystal
 #undef Si_5351_clock
@@ -1161,7 +1208,8 @@ Bounce button6 = Bounce(BUTTON_6_PIN, 50);
 Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
-#elif defined(HARDWARE_DD4WH_T4)
+#elif defined(HARDWARE_DD4WH_T4) // push-buttons
+
 Si5351 si5351;
 #define MASTER_CLK_MULT  4  // QSD frontend requires 4x clock
 
@@ -1199,10 +1247,7 @@ Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
 float DD4WH_RF_gain = 6.0;
 
-#elif defined(HARDWARE_F1FGV)
-
-
-#else
+#else // push-buttons
 // Optical Encoder connections
 Encoder tune      (16, 17);
 Encoder filter    (1, 2);
@@ -1246,11 +1291,13 @@ Bounce button6 = Bounce(BUTTON_6_PIN, 50);
 Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
-#endif
+#endif // push-buttons
 
+#if defined(USE_METRO)
 Metro five_sec = Metro(2000); // Set up a Metro
 Metro ms_500 = Metro(500); // Set up a Metro
 Metro encoder_check = Metro(100); // Set up a Metro
+#endif
 //Metro dbm_check = Metro(25);
 uint8_t wait_flag = 0;
 
@@ -1322,6 +1369,7 @@ AudioConnection          patchCord2(i2s_in, 1, Q_in_R, 0);
 
 AudioConnection          patchCord3(Q_out_L, 0, mixleft, 0);
 AudioConnection          patchCord4(Q_out_R, 0, mixright, 0);
+
 #if defined(MP3)
 AudioConnection          patchCord5(playMp3, 0, mixleft, 1);
 AudioConnection          patchCord6(playMp3, 1, mixright, 1);
@@ -1623,7 +1671,6 @@ struct band bands[NUM_BANDS] = {
 
 int current_band = STARTUP_BAND;
 
-
 ulong samp_ptr = 0;
 
 const int myInput = AUDIO_INPUT_LINEIN;
@@ -1886,9 +1933,9 @@ uint16_t autotune_counter = 0;
  * = 128 * (512 / 2 / 128 * 8) / 8
  */
 
-#ifndef FLASHMEM
-#define FLASHMEM
-#endif
+// #ifndef FLASHMEM
+// #define FLASHMEM
+// #endif
 
 #if defined(T4)
 const uint32_t FFT_L = 512; //
@@ -1930,6 +1977,7 @@ float32_t DMAMEM float_buffer_R [BUFFER_SIZE * N_B];
 float32_t DMAMEM float_buffer_L_T [BUFFER_SIZE * N_B];        //Tisho
 float32_t DMAMEM float_buffer_R_T [BUFFER_SIZE * N_B];        //Tisho
 #endif
+
 float32_t DMAMEM FFT_buffer [FFT_L * 2] __attribute__ ((aligned (4)));
 float32_t DMAMEM last_sample_buffer_L [BUFFER_SIZE * N_DEC_B];
 float32_t DMAMEM last_sample_buffer_R [BUFFER_SIZE * N_DEC_B];
@@ -2072,7 +2120,8 @@ uint16_t  AudioEqualizer_nFIR  = 200;              // Number of coefficients
 #else
 uint16_t  AudioEqualizer_nFIR  = 69;              // Number of coefficients
 #define EQUALIZER_MAX_COEFFS 69
-#endif
+#endif //T4
+
 #define MF_PI    3.14159265f
 #define ERR_EQ_BANDS 1
 #define ERR_EQ_SIDELOBES 2
@@ -2875,6 +2924,8 @@ arm_biquad_casd_df1_inst_f32 IIR_biquad_Zoom_FFT_Q;
 int zoom_sample_ptr = 0;
 uint8_t zoom_display = 0;
 
+
+
 const float32_t nuttallWindow256[] = {
   0.0000001, 0.0000073, 0.0000292, 0.0000663, 0.0001192, 0.0001891, 0.0002771, 0.0003851,
   0.0005147, 0.0006684, 0.0008485, 0.0010580, 0.0012998, 0.0015775, 0.0018947, 0.0022554,
@@ -3032,7 +3083,6 @@ const uint16_t gradient[] = {
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
-FLASHMEM
 void flexRamInfo(void)
 { // credit to FrankB, KurtE and defragster !
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)
@@ -3104,8 +3154,11 @@ void flexRamInfo(void)
 #endif
 }
 
-FLASHMEM 
 void setup() {
+
+  Serial.println("ConvolutionSDR starting");
+  delay(1000);
+
 #if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41)
   pinMode(On_set, OUTPUT);
   digitalWrite (On_set, HIGH);      // Hold switch on
@@ -3113,11 +3166,9 @@ void setup() {
 
 #if defined(T4)
 //  set_arm_clock(T4_CPU_FREQUENCY);
-  set_CPU_freq_T4();
+//  set_CPU_freq_T4();
 #endif
 
-  Serial.begin(115200);
-  delay(100);
   // all the comments on memory settings and MP3 playing are for FFT size of 1024 !
   // for the large queue sizes at 192ksps sample rate we need a lot of buffers
   //  AudioMemory(130);  // good for 176ksps sample rate, but MP3 playing is not possible
@@ -3245,7 +3296,33 @@ void setup() {
   //whitenoise2.amplitude(0.7);
 //  inputleft.gain(1, 1.0);
 //  inputright.gain(1, 1.0);
-
+  Serial.println("sgtl5000 initialized");
+#if defined(HARDWARE_DISPLAY_RA8875)
+  tft.begin(RA8875_800x480);
+  Serial.println("RA8875 begun");
+  tft.useLayers(true);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setFontScale(1);                                         //font x2
+  tft.setCursor ( 20, 20);                                  
+  tft.print("F1FGV ");
+  tft.setCursor ( 20, 50);                                  
+  tft.print("RA8875 ConvolutionSDR");
+  delay(3000);
+  Serial.println("RA8875 end");
+#if defined(USE_FT5206_TOUCH)
+  tft.useCapINT(RA8875_INT);//we use the capacitive chip Interrupt out!
+  //the following set the max touches (max 5)
+  //it can be placed inside loop but BEFORE touched()
+  //to limit dinamically the touches (for example to 1)
+  tft.setTouchLimit(MAXTOUCHLIMIT);
+  //tft.setRotation(0);//this works in any rotation mode!
+  tft.enableCapISR(true);//capacitive touch screen interrupt it's armed
+#else
+  tft.print("you should open RA8875UserSettings.h file and uncomment USE_FT5206_TOUCH!");
+#endif
+  Serial.println("RA8875 initialized");
+#endif
 
 #if defined(HARDWARE_FRANKB)
   Wire.beginTransmission(PCF8574_ADR);
@@ -3328,7 +3405,8 @@ void setup() {
   //  pinMode(AUDIO_AMP_ENABLE, OUTPUT);
   //  digitalWrite(AUDIO_AMP_ENABLE, HIGH);
 
-     // Serial.println("before tft init");
+#if !defined(HARDWARE_DISPLAY_RA8875)
+  // Serial.println("before tft init");
 #if defined(T4)    
   // 70MHz, wow!   
   tft.begin(70000000,10000000);
@@ -3339,6 +3417,8 @@ void setup() {
 #else
   tft.begin();
 #endif
+
+
 #if defined(HARDWARE_FRANKB) || defined(HARDWARE_FRANKB2)
   tft.setRotation( 1 );
 #else
@@ -3348,6 +3428,7 @@ void setup() {
   tft.useFrameBuffer(1);
   tft.updateScreenAsync(true);
 #endif  
+#endif // ! defined(HARDWARE_DISPLAY_RA8875)
   tft.fillScreen(ILI9341_BLACK);
   tft.setCursor(10, 1);
   tft.setTextSize(2);
@@ -3831,9 +3912,18 @@ void setup() {
      start local oscillator Si5351
   ****************************************************************************************/
   setAttenuator(RF_attenuation);
-  //Serial.println("before Si5351 init");
+  Serial.println("before Si5351 init");
+#if defined(HARDWARE_F1FGV)
+  bool i2c_found = false;
+  while (!i2c_found){
+    i2c_found = si5351.init(SI5351_CRYSTAL_LOAD_6PF, Si_5351_crystal, 0);
+    delay(10);
+  }
+#else
   si5351.init(SI5351_CRYSTAL_LOAD_10PF, Si_5351_crystal, calibration_constant);
   //si5351.drive_strength(Si_5351_clock, Si_5351_drive);
+#endif
+  Serial.println("Si5351 initialized");
   setfreq();
   delay(100);
   //show_frequency(bands[current_band].freq, 1);
@@ -3908,9 +3998,9 @@ void setup() {
 
 } // END SETUP
 
-FASTRUN
 elapsedMicros usec = 0;
 
+FASTRUN
 void loop() {
   // does this save battery power ? https://forum.pjrc.com/threads/40315-Reducing-Power-Consumption
   // YES !!! 40mA less, but it seriously slows down reaction of buttons and encoders
@@ -6738,6 +6828,7 @@ if(0)
         tft.setTextColor(ILI9341_WHITE);
       }
 
+#if defined(USE_METRO)
 //if(0)
   if (encoder_check.check() == 1)
   {
@@ -6757,6 +6848,7 @@ if(0)
       show_frequency(Pilot_tone_freq * 100000.0, 0);
     }
   }
+#endif
 
   //    if(dbm_check.check() == 1) Calculatedbm();
 #if defined(MP3)
@@ -12987,7 +13079,7 @@ void clock_display() {
   }
 }
 
-FLASHMEM
+
 static void clock_draw_marks(int hour)
 {
   double SIN, COS;
@@ -13009,7 +13101,6 @@ static void clock_draw_marks(int hour)
   tft.drawLine(x1 + pos_x_a_time, y1 + pos_y_a_time, x2 + pos_x_a_time, y2 + pos_y_a_time, color);
 }
 
-FLASHMEM
 void Init_Display_Clock()
 {
   // Draw Clockface
@@ -13158,6 +13249,7 @@ void printTrack () {
 #endif //MP3
 
 void show_load() {
+#if defined(USE_METRO)
   if (five_sec.check() == 1)
   {
 #ifdef DEBUG
@@ -13174,6 +13266,7 @@ void show_load() {
     AudioProcessorUsageMaxReset();
     AudioMemoryUsageMaxReset();
   }
+#endif
 }
 
 float32_t sign(float32_t x) {
