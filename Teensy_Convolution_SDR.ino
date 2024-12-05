@@ -403,6 +403,21 @@ class RA8875_adaptor: public RA8875 {
   }
 };
 
+#if defined(HARDWARE_DISPLAY_RA8875)
+
+#include "font_Arial.h"
+
+extern const ILI9341_t3_font_t Arial_8;
+extern const ILI9341_t3_font_t Arial_9;
+extern const ILI9341_t3_font_t Arial_10;
+extern const ILI9341_t3_font_t Arial_11;
+extern const ILI9341_t3_font_t Arial_12;
+// extern const ILI9341_t3_font_t Arial_13;
+extern const ILI9341_t3_font_t Arial_14;
+// extern const ILI9341_t3_font_t Arial_16;
+extern const ILI9341_t3_font_t Arial_18;
+
+
 #define ILI9341_WHITE RA8875_WHITE
 #define ILI9341_RED   RA8875_RED
 #define ILI9341_ORANGE 0xFD20      /* 255, 165,   0 */
@@ -416,6 +431,75 @@ class RA8875_adaptor: public RA8875 {
 #define ILI9341_LIGHTGREY  0xC618      /* 192, 192, 192 */
 #define ILI9341_DARKGREY  0x7BEF      /* 128, 128, 128 */
 #define ILI9341_DARKGREEN 0x03E0      /*   0, 128,   0 */
+
+
+class TouchComponent {
+  public: 
+    uint16_t x, y, width, height;
+    TouchComponent (uint16_t x, uint16_t y, uint16_t width, uint16_t height) :
+                    x(x), y(y), width(width), height(height){
+    }
+};
+class TouchButton : TouchComponent {
+  public:
+    const char * text1;
+    const char * text2;
+    uint32_t rebounce_millis;
+    uint32_t previous_millis;
+    bool stateChanged;
+    bool state;
+    RA8875_adaptor* pTFT;
+    TouchButton(uint16_t slot,
+                    const char * text1, const char * text2) : 
+                        TouchComponent (321, (slot -1) * 32, 50, 31), text1(text1), text2(text2){
+    }
+    void draw(){
+      pTFT->fillRect(x, y, width, height, ILI9341_NAVY);
+      pTFT->drawRect(x, y, width, height, ILI9341_MAROON);
+      pTFT->setCursor(x + 3, y + 4);
+      pTFT->setTextColor(ILI9341_WHITE);
+      pTFT->setFont(Arial_10);
+      pTFT->print(text1);
+      // lower text menu
+      pTFT->setCursor(x + 3, y + 16);
+      pTFT->print(text2);
+    }
+    void setDisplay(RA8875_adaptor* display){
+      pTFT = display;
+      draw();
+    }
+    int read(){
+      return (int)0;
+    }
+    bool debounce() {
+      return false;
+    }
+    bool rebounce(int b) {
+      return true;
+    }
+    int update(){ // check if there has been a touch
+      if ( debounce() ) { // debounce updates the state
+            rebounce(0);
+            return stateChanged = 1;
+        }
+        // We need to rebounce, so simulate a state change
+      if ( rebounce_millis && (millis() - previous_millis >= rebounce_millis) ) {
+            previous_millis = millis();
+        rebounce(0);
+        return stateChanged = 1;
+      }
+      return stateChanged = 0;
+    }
+    // The risingEdge method is true for one scan after the de-bounced input goes from off-to-on.
+  bool  risingEdge() { 
+      return stateChanged && state;
+    }
+  // The fallingEdge  method it true for one scan after the de-bounced input goes from on-to-off. 
+  bool  fallingEdge() { 
+      return stateChanged && !state;
+    }
+};
+#endif
 
 #else //HARDWARE_DISPLAY_RA8875
 #include <ILI9341_t3n.h>
@@ -1066,16 +1150,37 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 #endif
 
 // push-buttons
+
 #if defined(HARDWARE_F1FGV)
-// no buttons, use vanilla set of push buttons for now
-#define   BUTTON_1_PIN      33
-#define   BUTTON_2_PIN      34
-#define   BUTTON_3_PIN      35
-#define   BUTTON_4_PIN      36
-#define   BUTTON_5_PIN      38 // this is the pushbutton pin of the tune encoder
-#define   BUTTON_6_PIN       0 // this is the pushbutton pin of the filter encoder
-#define   BUTTON_7_PIN      37 // this is the menu button pin
-#define   BUTTON_8_PIN       8  //27 // this is the pushbutton pin of encoder 3
+TouchButton button1 = TouchButton(1, "touch", "1");
+TouchButton button2 = TouchButton(2, "touch", "2");
+TouchButton button3 = TouchButton(3, "touch", "3");
+TouchButton button4 = TouchButton(4, "touch", "4");
+TouchButton button5 = TouchButton(5, "touch", "5");
+TouchButton button6 = TouchButton(6, "touch", "6");
+TouchButton button7 = TouchButton(7, "touch", "7");
+TouchButton button8 = TouchButton(8, "touch", "8");
+
+void drawButtons(RA8875_adaptor* pTFT){
+  button1.setDisplay(pTFT);
+  button2.setDisplay(pTFT);
+  button3.setDisplay(pTFT);
+  button4.setDisplay(pTFT);
+  button5.setDisplay(pTFT);
+  button6.setDisplay(pTFT);
+  button7.setDisplay(pTFT);
+  button8.setDisplay(pTFT);
+}
+#else
+
+#define   BUTTON_1_PIN      24 // encoder2 button = button3SW
+#define   BUTTON_2_PIN      26 // BAND+ = button2SW
+#define   BUTTON_1_PIN      28 // ???
+#define   BUTTON_4_PIN      30 //
+#define   BUTTON_5_PIN      25 // this is the pushbutton pin of the tune encoder
+#define   BUTTON_6_PIN      27 // this is the pushbutton pin of the filter encoder
+#define   BUTTON_7_PIN      32 // this is the menu button pin
+#define   BUTTON_8_PIN      29  //27 // this is the pushbutton pin of encoder 3
 
 Bounce button1 = Bounce(BUTTON_1_PIN, 50);
 Bounce button2 = Bounce(BUTTON_2_PIN, 50);
@@ -1085,13 +1190,9 @@ Bounce button5 = Bounce(BUTTON_5_PIN, 50);
 Bounce button6 = Bounce(BUTTON_6_PIN, 50);
 Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
+#endif
 
-Encoder tune      (0, 1);
-Encoder filter      (2, 3);
-Encoder encoder3      (4, 5);
-
-Si5351 si5351;
-#define MASTER_CLK_MULT  1  // we use 2 channels to generate the quadrature
+#if defined(HARDWARE_F1FGV)
 
 
 #define RA8875_RESET 9                                      // RA8875
@@ -1102,17 +1203,14 @@ Si5351 si5351;
 
 RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
 
-#include "font_Arial.h"
+Encoder tune      (0, 1);
+Encoder filter      (2, 3);
+Encoder encoder3      (4, 5);
 
-extern const ILI9341_t3_font_t Arial_8;
-extern const ILI9341_t3_font_t Arial_9;
-extern const ILI9341_t3_font_t Arial_10;
-extern const ILI9341_t3_font_t Arial_11;
-extern const ILI9341_t3_font_t Arial_12;
-// extern const ILI9341_t3_font_t Arial_13;
-extern const ILI9341_t3_font_t Arial_14;
-// extern const ILI9341_t3_font_t Arial_16;
-extern const ILI9341_t3_font_t Arial_18;
+Si5351 si5351;
+#define MASTER_CLK_MULT  1  // we use 2 channels to generate the quadrature
+
+
 
 // Button pin definitions (minimal)
 const uint8_t Band1 = 26; // band selection pins for LPF relays, used with 2N7000: HIGH means LPF is activated
@@ -3319,7 +3417,8 @@ void setup() {
   //tft.setRotation(0);//this works in any rotation mode!
   tft.enableCapISR(true);//capacitive touch screen interrupt it's armed
 #else
-  tft.print("you should open RA8875UserSettings.h file and uncomment USE_FT5206_TOUCH!");
+  #error uncomment you should open RA8875UserSettings.h file and uncomment USE_FT5206_TOUCH
+  Serial.println("you should open RA8875UserSettings.h file and uncomment USE_FT5206_TOUCH!");
 #endif
   Serial.println("RA8875 initialized");
 #endif
@@ -3445,6 +3544,8 @@ void setup() {
   prepare_spectrum_display();
   
   Init_Display_Clock();
+
+  drawButtons(&tft);
 
   /****************************************************************************************
      initialize variables from DMAMEM
@@ -10195,18 +10296,19 @@ void setfreq () {
   si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK1);
   si5351.set_freq_manual(siFrequency + 10000 * SI5351_FREQ_MULT, pll_freq, SI5351_CLK2); // set test generator 10kHz above
 
-  if (bMustChangeDivider){
+  if (1 || bMustChangeDivider){
     si5351.set_phase(SI5351_CLK0, 0);
     si5351.set_phase(SI5351_CLK1, 0);
 
     si5351.pll_reset(SI5351_PLLA);
 
-    cli(); // mask interrupts to get precise timing
+    //cli(); // mask interrupts to get precise timing
     si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
     si5351.set_freq_manual(siFrequency - 1000, pll_freq, SI5351_CLK1); // 10Hz lower
-    delayMicroseconds(21000); //  wait for the phase to become -90 degrees
+    delay(20);
+    //delayMicroseconds(21000); //  wait for the phase to become -90 degrees
     si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK1);
-    sei();
+    //sei();
   } else {
     si5351.set_freq_manual(siFrequency, pll_freq, SI5351_CLK0);
     si5351.set_freq_manual(siFrequency - 1000, pll_freq, SI5351_CLK1);
@@ -10251,7 +10353,11 @@ void buttons() {
   
   //Tisho
   #define TmDelay 50
+#if defined(HARDWARE_DISPLAY_RA8875)
+  uint8_t ModeButtonState = button3.read();
+#else
   uint8_t ModeButtonState = digitalRead(BUTTON_3_PIN);
+#endif
   static uint8_t PWR_Change;
   static uint8_t MdButSt_Cnt;
   
@@ -10267,8 +10373,13 @@ void buttons() {
       
       //Tisho
   #define TmDelay_Short 5
+#if defined(HARDWARE_DISPLAY_RA8875)
+  uint8_t Enc3ButtonState = button8.read();
+  uint8_t Enc2ButtonState = button6.read();
+#else
   uint8_t Enc3ButtonState = digitalRead(BUTTON_8_PIN);
   uint8_t Enc2ButtonState = digitalRead(BUTTON_6_PIN);
+#endif
   static uint8_t Menu_Assistant2_Change;
   static uint8_t Menu_Assistant1_Change;
   static uint8_t Enc3ButSt_Cnt;
@@ -13555,7 +13666,7 @@ void Display_dbm()
     case DISPLAY_S_METER_DBM:
       display_something = 1;
       val_dbm = dbm;
-      unit_label = "dBm   ";
+      unit_label = "dBm---";
       break;
     case DISPLAY_S_METER_DBMHZ:
       display_something = 0;
@@ -13641,7 +13752,7 @@ void Display_dbm()
   }
   else
   {
-    tft.fillRect(pos_x_dbm + 98, pos_y_dbm + 4, 100, 16, ILI9341_BLACK);
+    tft.fillRect(pos_x_dbm + 98, pos_y_dbm + 4, 42, 16, ILI9341_BLACK);
   }
 }
 
