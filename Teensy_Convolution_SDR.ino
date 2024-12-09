@@ -442,7 +442,9 @@ class Graphics {
 std::set<TouchComponent*> Graphics::touchComponents;
 class TouchComponent {
   public: 
-    uint16_t xStart, yStart, width, height;
+    uint16_t xStart;
+    uint16_t yStart;
+    uint16_t width, height;
     bool touched;
     bool stateChanged;
     bool state;
@@ -458,7 +460,7 @@ class TouchComponent {
     {
       Graphics::touchComponents.erase(this);
     }
-    void touchIsLifted(){
+    virtual void touchIsLifted(){
       if (touched){
         touched=false;
         draw();
@@ -500,13 +502,6 @@ class TouchButton : public TouchComponent {
     uint16_t xSlot;
     uint16_t ySlot;
     RA8875_adaptor* pTFT;
-    TouchButton(uint16_t xSlot,
-                    const char * text1, const char * text2) : 
-                        TouchComponent ((xSlot -1) * 100, 400,  99, 75), text1(text1), text2(text2), xSlot(xSlot), ySlot(5){
-      interval(50);
-      previous_millis = millis();
-      state = false;
-    }
     TouchButton(uint16_t xSlot, uint16_t ySlot,
                     const char * text1, const char * text2) : 
                         TouchComponent ((xSlot -1) * 100, ySlot * 80,  99, 75), text1(text1), text2(text2), xSlot(xSlot), ySlot(ySlot){
@@ -595,19 +590,78 @@ class Encoder {
   }
 };
 
-class TouchEncoder: public Encoder {
-  uint16_t xSlot; 
-  TouchButton* buttonUp;
-  TouchButton* buttonDown;
-  public:
-  TouchEncoder(uint16_t xSlot): Encoder(), 
-        xSlot(xSlot), 
-        buttonUp(new TouchButton(xSlot, 3, "Up", "" )),
-        buttonDown(new TouchButton(xSlot, 4, "" , "Down")) {
+class TouchEncoder: public Encoder, public TouchComponent {
+  uint16_t xSlot;
+  const char * text;
+  RA8875_adaptor* pTFT;
+public:
+  typedef enum {touchNone, touchUp, touchDown} touch_t;
+  touch_t touched;
+  touch_t previousTouchedState;
+  bool isTouchedUp(){
+    return touched == touchUp;
   }
+  bool isTouchedDown(){
+    return touched == touchDown;
+  }
+  void touchIsLifted() override{
+    if (touched != touchNone){
+      touched = touchNone;
+      draw();
+    }
+  }
+  TouchEncoder(uint16_t xSlot, uint16_t yPosPixels, const char* text) : 
+                    TouchComponent ((xSlot -1) * 100, yPosPixels,  99, 150), xSlot(xSlot), text(text){}
   void setDisplay(RA8875_adaptor* display){
-    buttonUp->setDisplay(display);
-    buttonDown->setDisplay(display);
+    pTFT = display;
+    draw();
+  }
+  void draw() override {
+    pTFT->drawTriangle(xStart, yStart + height /3, xStart + width, yStart + height / 3, xStart + width/2, yStart, ILI9341_MAROON);
+    pTFT->fillTriangle(xStart, yStart + height /3-1, 
+                      xStart + width - 3, yStart + height/3 - 1, 
+                      xStart + width/2, yStart + 1,
+                  isTouchedUp() ? ILI9341_NAVY: ILI9341_BLUE);
+    pTFT->drawTriangle(xStart, yStart +  2* height /3, xStart + width, yStart + 2* height / 3, xStart + width/2, yStart + height, ILI9341_MAROON);
+    pTFT->fillTriangle(xStart, yStart +  2* height/3 +1, 
+                      xStart + width - 3, yStart + 2* height/3 + 1, 
+                      xStart + width/2, yStart + height -1,
+                  isTouchedDown() ? ILI9341_NAVY: ILI9341_BLUE);
+    //pTFT->fillRect(xStart, yStart + height /3, width, height / 3, ILI9341_NAVY);
+    pTFT->setTextColor(ILI9341_WHITE);
+    pTFT->setFont(Arial_18);
+    pTFT->setCursor(xStart + 50, yStart + height /2 -10 , true);
+    pTFT->print(text);
+    pTFT->fillRect(xStart, yStart + height /2, width, height / 6, ILI9341_BLACK);
+    pTFT->setCursor(xStart + 50, yStart + height /2 + 11, true);
+    pTFT->print(read());
+  }
+  void processTouch(uint16_t xTouch, uint16_t yTouch) {
+    touch_t newTouchedState;
+    if (xStart < xTouch &&
+        xStart + width > xTouch  &&
+        yStart < yTouch &&
+        yStart + height/2 > yTouch ){
+      newTouchedState = touchUp;
+    } else if (xStart < xTouch &&
+        xStart + width > xTouch  &&
+        yStart + height/2 < yTouch &&
+        yStart + height > yTouch ){
+      newTouchedState = touchDown;  
+    } else {
+      newTouchedState = touchNone;
+    }
+    if (touched != newTouchedState){
+      if (touched == false){
+        stateChanged = false; // user is still pressing but outside, do not allow a falling edge
+      }
+      touched = newTouchedState;
+      int i = 0;
+      if (touched == touchDown) i = -1;
+      if (touched == touchUp) i = +1;
+      increment(i);
+      draw();
+    }
   }
 };
 
@@ -1263,19 +1317,19 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 
 #if defined(HARDWARE_F1FGV)
 
-TouchButton button1 = TouchButton(1, "Audio", "EQ");
-TouchButton button2 = TouchButton(2, "Band", "select");
-TouchButton button3 = TouchButton(3, "Demod", "select");
-TouchButton button4 = TouchButton(4, "Func", "select");
-TouchButton button5 = TouchButton(5, "Digit", "select");
-TouchButton button6 = TouchButton(6, "Menu", "display");
-TouchButton button7 = TouchButton(7, "Func", "select");
-TouchButton button8 = TouchButton(8, "Menu2", "display");
+TouchButton button1 = TouchButton(1, 5, "Audio", "EQ");
+TouchButton button2 = TouchButton(2, 5, "Band", "select");
+TouchButton button3 = TouchButton(3, 5, "Demod", "select");
+TouchButton button4 = TouchButton(4, 5, "Func", "select");
+TouchButton button5 = TouchButton(5, 5, "Digit", "select");
+TouchButton button6 = TouchButton(6, 5, "Menu", "display");
+TouchButton button7 = TouchButton(7, 5, "Func", "select");
+TouchButton button8 = TouchButton(8, 5, "Menu2", "display");
 
 
-TouchEncoder tune(5);
-TouchEncoder filter(6);
-TouchEncoder encoder3(7);
+TouchEncoder tune(5, 240, "tune");
+TouchEncoder filter(6, 240, "filter");
+TouchEncoder encoder3(7, 240, "select");
 
 
 void drawButtons(RA8875_adaptor* pTFT){
@@ -1301,6 +1355,9 @@ void processTouches(uint16_t x, uint16_t y){
   button6.processTouch(x, y);
   button7.processTouch(x, y);
   button8.processTouch(x, y);
+  tune.processTouch(x,y);
+  filter.processTouch(x,y);
+  encoder3.processTouch(x,y);
 }
 
 
