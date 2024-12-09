@@ -280,18 +280,17 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #if defined(MP3)
 #include <SD.h>
 #endif
+
 #if defined(USE_METRO)
 #include <Metro.h>
 #endif
+
 #include <Bounce.h>
 #include <arm_math.h>
 #include <arm_const_structs.h>
 #include <si5351.h>
 
-#if defined(HARDWARE_F1FGV)
-//#include <Bounce2.h>
-#include <Encoder.h>
-#else
+#if ! defined(HARDWARE_F1FGV)
 //#include <Encoder.h> // try empirically which lib works best for your encoders !
 #include <EncoderBounce.h> // https://github.com/FrankBoesing/EncoderBounce, does not work with my cheap chinese encoders ... but works perfectly with Alps encoders (which cost 10 times more) DD4WH
 #endif
@@ -302,6 +301,7 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 
 #if defined(T4)
 #if defined(HARDWARE_DISPLAY_RA8875)
+
 
 #include <RA8875.h>
 class RA8875_adaptor: public RA8875 {
@@ -403,8 +403,6 @@ class RA8875_adaptor: public RA8875 {
   }
 };
 
-#if defined(HARDWARE_DISPLAY_RA8875)
-
 #include "font_Arial.h"
 
 extern const ILI9341_t3_font_t Arial_8;
@@ -432,56 +430,136 @@ extern const ILI9341_t3_font_t Arial_18;
 #define ILI9341_DARKGREY  0x7BEF      /* 128, 128, 128 */
 #define ILI9341_DARKGREEN 0x03E0      /*   0, 128,   0 */
 
+#include <set>
 
+class TouchComponent;
+class Graphics {
+  friend class TouchComponent;
+  public:
+    static std::set<TouchComponent*> touchComponents;
+    static void touchIsLifted();
+};
+std::set<TouchComponent*> Graphics::touchComponents;
 class TouchComponent {
   public: 
-    uint16_t x, y, width, height;
+    uint16_t xStart, yStart, width, height;
+    bool touched;
+    bool stateChanged;
+    bool state;
+    static std::set<TouchComponent*> touchComponents;
+    virtual void draw(){}
     TouchComponent (uint16_t x, uint16_t y, uint16_t width, uint16_t height) :
-                    x(x), y(y), width(width), height(height){
+                    xStart(x), yStart(y), width(width), height(height){
+      stateChanged = false;
+      state = false;
+      Graphics::touchComponents.insert(this);
+    }
+    virtual ~TouchComponent()
+    {
+      Graphics::touchComponents.erase(this);
+    }
+    void touchIsLifted(){
+      if (touched){
+        touched=false;
+        draw();
+      }
+    }
+    void processTouch(uint16_t xTouch, uint16_t yTouch) {
+      bool newTouchedState;
+      if (xStart < xTouch &&
+          xStart + width > xTouch  &&
+          yStart < yTouch &&
+          yStart + height > yTouch ){
+        newTouchedState = true;
+      } else {
+        newTouchedState = false;
+      }
+      if (touched != newTouchedState){
+        if (touched == false){
+          stateChanged = false; // user is still pressing but outside, do not allow a falling edge
+        }
+        touched = newTouchedState;
+        draw();
+      }
+    }
+    bool isTouched(){
+      return touched;
     }
 };
-class TouchButton : TouchComponent {
+void Graphics::touchIsLifted(){
+  for (std::set<TouchComponent*>::iterator c = Graphics::touchComponents.begin(); c != Graphics::touchComponents.end(); ++c) {
+    (*c)->touchIsLifted();
+  }
+}
+class TouchButton : public TouchComponent {
+  protected:
+    unsigned long  previous_millis, interval_millis, rebounce_millis;
   public:
     const char * text1;
     const char * text2;
-    uint32_t rebounce_millis;
-    uint32_t previous_millis;
-    bool stateChanged;
-    bool state;
+    uint16_t xSlot;
+    uint16_t ySlot;
     RA8875_adaptor* pTFT;
-    TouchButton(uint16_t slot,
+    TouchButton(uint16_t xSlot,
                     const char * text1, const char * text2) : 
-                        TouchComponent (321, (slot -1) * 32, 50, 31), text1(text1), text2(text2){
+                        TouchComponent ((xSlot -1) * 100, 400,  99, 75), text1(text1), text2(text2), xSlot(xSlot), ySlot(5){
+      interval(50);
+      previous_millis = millis();
+      state = false;
     }
-    void draw(){
-      pTFT->fillRect(x, y, width, height, ILI9341_NAVY);
-      pTFT->drawRect(x, y, width, height, ILI9341_MAROON);
-      pTFT->setCursor(x + 3, y + 4);
+    TouchButton(uint16_t xSlot, uint16_t ySlot,
+                    const char * text1, const char * text2) : 
+                        TouchComponent ((xSlot -1) * 100, ySlot * 80,  99, 75), text1(text1), text2(text2), xSlot(xSlot), ySlot(ySlot){
+      interval(50);
+      previous_millis = millis();
+      state = false;
+    }
+    virtual ~TouchButton(){}
+    void draw() override {
+      pTFT->fillRect(xStart, yStart, width, height, isTouched() ? ILI9341_NAVY: ILI9341_BLUE);
+      pTFT->drawRect(xStart, yStart, width, height, ILI9341_MAROON);
+      pTFT->setCursor(xStart + 7, yStart + 12);
       pTFT->setTextColor(ILI9341_WHITE);
-      pTFT->setFont(Arial_10);
+      pTFT->setFont(Arial_18);
       pTFT->print(text1);
       // lower text menu
-      pTFT->setCursor(x + 3, y + 16);
+      pTFT->setCursor(xStart + 7, yStart + 40);
       pTFT->print(text2);
     }
     void setDisplay(RA8875_adaptor* display){
       pTFT = display;
       draw();
     }
-    int read(){
-      return (int)0;
+    // Bounce functions (adapted)
+    void interval(unsigned long interval_millis){
+      this->interval_millis = interval_millis;
+      this->rebounce_millis = 0;
     }
-    bool debounce() {
-      return false;
+    void rebounce(unsigned long interval){
+      this->rebounce_millis = interval;
+    }
+    int read(){
+      return isTouched();
+    }
+    int debounce() {
+      uint8_t newState = isTouched();
+      if (state != newState ) {
+        if (millis() - previous_millis >= interval_millis) {
+          previous_millis = millis();
+          state = newState;
+          return 1;
+        }
+      }
+      return 0;
     }
     bool rebounce(int b) {
       return true;
     }
     int update(){ // check if there has been a touch
       if ( debounce() ) { // debounce updates the state
-            rebounce(0);
-            return stateChanged = 1;
-        }
+          rebounce(0);
+          return stateChanged = 1;
+      }
         // We need to rebounce, so simulate a state change
       if ( rebounce_millis && (millis() - previous_millis >= rebounce_millis) ) {
             previous_millis = millis();
@@ -491,15 +569,47 @@ class TouchButton : TouchComponent {
       return stateChanged = 0;
     }
     // The risingEdge method is true for one scan after the de-bounced input goes from off-to-on.
-  bool  risingEdge() { 
+    bool  risingEdge() { 
       return stateChanged && state;
     }
   // The fallingEdge  method it true for one scan after the de-bounced input goes from on-to-off. 
-  bool  fallingEdge() { 
+    bool  fallingEdge() { 
+      if (stateChanged && !state){
+        Serial.print(xSlot);
+        Serial.print(" falling edge is " );
+        Serial.println(stateChanged && !state);
+      }
       return stateChanged && !state;
     }
 };
-#endif
+
+class Encoder {
+  int position;
+  public:
+  Encoder(): position(0) {}
+  void increment(int i){ // will decrement when using a negative value
+    position += i;
+  }
+  int read(){
+    return position;
+  }
+};
+
+class TouchEncoder: public Encoder {
+  uint16_t xSlot; 
+  TouchButton* buttonUp;
+  TouchButton* buttonDown;
+  public:
+  TouchEncoder(uint16_t xSlot): Encoder(), 
+        xSlot(xSlot), 
+        buttonUp(new TouchButton(xSlot, 3, "Up", "" )),
+        buttonDown(new TouchButton(xSlot, 4, "" , "Down")) {
+  }
+  void setDisplay(RA8875_adaptor* display){
+    buttonUp->setDisplay(display);
+    buttonDown->setDisplay(display);
+  }
+};
 
 #else //HARDWARE_DISPLAY_RA8875
 #include <ILI9341_t3n.h>
@@ -1152,14 +1262,21 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 // push-buttons
 
 #if defined(HARDWARE_F1FGV)
-TouchButton button1 = TouchButton(1, "touch", "1");
-TouchButton button2 = TouchButton(2, "touch", "2");
-TouchButton button3 = TouchButton(3, "touch", "3");
-TouchButton button4 = TouchButton(4, "touch", "4");
-TouchButton button5 = TouchButton(5, "touch", "5");
-TouchButton button6 = TouchButton(6, "touch", "6");
-TouchButton button7 = TouchButton(7, "touch", "7");
-TouchButton button8 = TouchButton(8, "touch", "8");
+
+TouchButton button1 = TouchButton(1, "Audio", "EQ");
+TouchButton button2 = TouchButton(2, "Band", "select");
+TouchButton button3 = TouchButton(3, "Demod", "select");
+TouchButton button4 = TouchButton(4, "Func", "select");
+TouchButton button5 = TouchButton(5, "Digit", "select");
+TouchButton button6 = TouchButton(6, "Menu", "display");
+TouchButton button7 = TouchButton(7, "Func", "select");
+TouchButton button8 = TouchButton(8, "Menu2", "display");
+
+
+TouchEncoder tune(5);
+TouchEncoder filter(6);
+TouchEncoder encoder3(7);
+
 
 void drawButtons(RA8875_adaptor* pTFT){
   button1.setDisplay(pTFT);
@@ -1170,7 +1287,23 @@ void drawButtons(RA8875_adaptor* pTFT){
   button6.setDisplay(pTFT);
   button7.setDisplay(pTFT);
   button8.setDisplay(pTFT);
+  tune.setDisplay(pTFT);
+  filter.setDisplay(pTFT);
+  encoder3.setDisplay(pTFT);
 }
+
+void processTouches(uint16_t x, uint16_t y){
+  button1.processTouch(x, y);
+  button2.processTouch(x, y);
+  button3.processTouch(x, y);
+  button4.processTouch(x, y);
+  button5.processTouch(x, y);
+  button6.processTouch(x, y);
+  button7.processTouch(x, y);
+  button8.processTouch(x, y);
+}
+
+
 #else
 
 #define   BUTTON_1_PIN      24 // encoder2 button = button3SW
@@ -1190,10 +1323,11 @@ Bounce button5 = Bounce(BUTTON_5_PIN, 50);
 Bounce button6 = Bounce(BUTTON_6_PIN, 50);
 Bounce button7 = Bounce(BUTTON_7_PIN, 50);
 Bounce button8 = Bounce(BUTTON_8_PIN, 50);
+
 #endif
 
 #if defined(HARDWARE_F1FGV)
-
+#pragma GCC diagnostic ignored "-Wunused-variable"
 
 #define RA8875_RESET 9                                      // RA8875
 #define RA8875_CS 10                                        // RA8875
@@ -1203,20 +1337,47 @@ Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
 RA8875_adaptor tft = RA8875_adaptor(RA8875_CS,RA8875_RESET);
 
-Encoder tune      (0, 1);
-Encoder filter      (2, 3);
-Encoder encoder3      (4, 5);
-
 Si5351 si5351;
 #define MASTER_CLK_MULT  1  // we use 2 channels to generate the quadrature
 
-
-
 // Button pin definitions (minimal)
-const uint8_t Band1 = 26; // band selection pins for LPF relays, used with 2N7000: HIGH means LPF is activated
-const uint8_t Band2 = 27; // always use only one LPF with HIGH, all others have to be LOW
+//const uint8_t Band1 = 26; // band selection pins for LPF relays, used with 2N7000: HIGH means LPF is activated
+//const uint8_t Band2 = 27; // always use only one LPF with HIGH, all others have to be LOW
+
+
+
+void processTouchDisplay(){
+  #if defined(USE_FT5206_TOUCH)
+  uint32_t currentTime = millis();
+  static int16_t xOffset;
+  static bool bSaved = false;
+  static uint32_t timeLastTouch;
+  if (tft.touched()){
+  //at this point we need to fill the FT5206 registers...
+    tft.updateTS();//now we have the data inside library
+    uint16_t coordinates[MAXTOUCHLIMIT][2];//to hold coordinates
+    tft.getTScoordinates(coordinates);
+    uint16_t countTouches = tft.getTouches();
+    uint16_t x = coordinates[0][0];
+    uint16_t y = coordinates[0][1];
+
+    if (countTouches == 1) {
+      timeLastTouch = currentTime;
+      processTouches(x, y);
+    }
+    tft.enableCapISR(); // TODO investigate if really needed
+  } else {
+    if (currentTime - timeLastTouch > 200){ // dead time after a touch
+      Graphics::touchIsLifted();
+      timeLastTouch = currentTime; // avoid calling this too many times
+    }
+  }
+}
+
+
 
 #elif defined (HARDWARE_DO7JBH)
+
 #define   BUTTON_1_PIN      22 // encoder2 button = button3SW
 #define   BUTTON_6_PIN      8 // this is the pushbutton pin of the filter encoder
 const int8_t On_set    = 25; // hold switched on
@@ -3179,7 +3340,7 @@ const uint16_t gradient[] = {
   , 0xF88F
 };
 
-#pragma GCC diagnostic ignored "-Wunused-variable"
+
 
 void flexRamInfo(void)
 { // credit to FrankB, KurtE and defragster !
@@ -3453,7 +3614,7 @@ void setup() {
   pinMode(BUTTON_8_PIN, INPUT_PULLUP);
 #endif
 
-#if (!defined(HARDWARE_DD4WH_T4))
+#if (!defined(HARDWARE_DD4WH_T4) && !defined(HARDWARE_F1FGV))
   pinMode(Band1, OUTPUT);  // LPF switches
   pinMode(Band2, OUTPUT);  //
 // internal pull-ups for encoder pins
@@ -6961,7 +7122,6 @@ if(0)
     }
   }
 #endif
-
   //    if(dbm_check.check() == 1) Calculatedbm();
 #if defined(MP3)
   if (Menu_pointer == MENU_PLAYER)
@@ -6986,6 +7146,8 @@ if(0)
     }
   }
 #endif
+  processTouchDisplay();
+
 } // end loop
 
 
@@ -8062,6 +8224,8 @@ else
 }
   zoom_sample_ptr = 0;
 }
+
+#pragma GCC diagnostic ignored "-Wunused-value"
 
 void Zoom_FFT_exe (uint32_t blockSize)
 {
@@ -10949,6 +11113,7 @@ void buttons() {
   }
 }
 
+#pragma GCC diagnostic ignored "-Wswitch"
 
 void show_menu()
 {
@@ -19082,3 +19247,5 @@ void clampf (float32_t * value, float32_t minimum, float32_t maximum)
   if(*value < minimum) *value = minimum;
   else if (*value > maximum) *value = maximum;
 }
+
+#endif
