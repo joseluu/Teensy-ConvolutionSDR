@@ -578,10 +578,10 @@ class TouchButton : public TouchComponent {
     }
 };
 
-class Encoder {
+class EncoderBase {
   int position;
   public:
-  Encoder(): position(0) {}
+  EncoderBase(): position(0) {}
   void increment(int i){ // will decrement when using a negative value
     position += i;
   }
@@ -590,7 +590,7 @@ class Encoder {
   }
 };
 
-class TouchEncoder: public Encoder, public TouchComponent {
+class TouchEncoder: public EncoderBase, public TouchComponent {
   uint16_t xSlot;
   const char * text;
   RA8875_adaptor* pTFT;
@@ -1319,18 +1319,40 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 
 TouchButton button1 = TouchButton(1, 5, "Audio", "EQ");
 TouchButton button2 = TouchButton(2, 5, "Band", "select");
-TouchButton button3 = TouchButton(3, 5, "Demod", "select");
-TouchButton button4 = TouchButton(4, 5, "Func", "select");
-TouchButton button5 = TouchButton(5, 5, "Digit", "select");
-TouchButton button6 = TouchButton(6, 5, "Menu", "display");
-TouchButton button7 = TouchButton(7, 5, "Func", "select");
-TouchButton button8 = TouchButton(8, 5, "Menu2", "display");
+TouchButton button3 = TouchButton(3, 5, "Modul", "select");
+TouchButton button4 = TouchButton(5, 5, "Top", "func");
+TouchButton button5 = TouchButton(4, 5, "Tune", "digit");
+TouchButton button6 = TouchButton(6, 5, "Top", "menu");
+TouchButton button7 = TouchButton(7, 5, "Bottom", "func");
+TouchButton button8 = TouchButton(8, 5, "Bottom", "menu");
+
+#include <Encoder.h>
+class HardwareEncoder: public Encoder {
+  using Encoder::Encoder;  // inherit constructors
+  public:
+  void setDisplay(RA8875_adaptor* display){}
+  void processTouch(uint16_t x, uint16_t y){}
+};
+
+#define HARDWARE_ENCODER_1
+#if !defined(HARDWARE_ENCODER_1)
+TouchEncoder tune(4, 240, "tune");
+#else
+HardwareEncoder tune(1, 0); //(26, 28);
+#endif
+
+#if !defined(HARDWARE_ENCODER_2)
+TouchEncoder filter(6, 240, "value");
+#else
+HardwareEncoder filter(1, 0); //(26, 28);
+#endif
 
 
-TouchEncoder tune(5, 240, "tune");
-TouchEncoder filter(6, 240, "filter");
-TouchEncoder encoder3(7, 240, "select");
-
+#if !defined(HARDWARE_ENCODER_3)
+TouchEncoder encoder3(8, 240, "value");
+#else
+HardwareEncoder encoder3(1, 0); //(26, 28);
+#endif
 
 void drawButtons(RA8875_adaptor* pTFT){
   button1.setDisplay(pTFT);
