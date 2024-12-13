@@ -290,7 +290,7 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 #include <arm_const_structs.h>
 #include <si5351.h>
 
-#if ! defined(HARDWARE_F1FGV)
+#if ! defined(HARDWARE_F1FGV)  // F1FGV hardware can use hardware or touch screen encoders, specific code around line 1300
 //#include <Encoder.h> // try empirically which lib works best for your encoders !
 #include <EncoderBounce.h> // https://github.com/FrankBoesing/EncoderBounce, does not work with my cheap chinese encoders ... but works perfectly with Alps encoders (which cost 10 times more) DD4WH
 #endif
@@ -305,14 +305,11 @@ uint32_t T4_CPU_FREQUENCY  =  512000000;
 
 #include <RA8875.h>
 class RA8875_adaptor: public RA8875 {
-
-  //using RA8875::RA8875;  // inherit constructors
+  using RA8875::RA8875;  // inherit constructors
   public:
-  RA8875_adaptor(const uint8_t CSp, const uint8_t RSTp) : RA8875(CSp, RSTp) {
-    // Serial.begin(115200);
-    Serial.println("ConvolutionSDR constructing");
-  }
 
+// define missing functions so that expecting to use the ILI9341
+// can run without changes
   int16_t drawNumber(long long_num, int poX, int poY) {
     char str[14];
     ltoa(long_num, str, 10);
@@ -574,7 +571,9 @@ class TouchButton : public TouchComponent {
         Serial.print(" falling edge is " );
         Serial.println(stateChanged && !state);
       }
-      return stateChanged && !state;
+      bool value = stateChanged && !state;
+      stateChanged = false;
+      return value;
     }
 };
 
@@ -1271,6 +1270,8 @@ uint8_t save_energy = 0;
 uint8_t atan2_approx = 1;
 
 
+// push-buttons and tft definitions for every possible hardware config
+
 #if defined (HARDWARE_DO7JBH) || defined (HARDWARE_DO7JBH_T41) 
 // Optical Encoder connections
 Encoder tune      (16, 17);
@@ -1279,7 +1280,6 @@ Encoder encoder3  (1, 2); //(26, 28);
 
 Si5351 si5351;
 #define MASTER_CLK_MULT  4  // QSD frontend requires 4x clock
-
 
 // pins for digital attenuator board PE4306
 //#define ATT_LE          24
@@ -1301,7 +1301,7 @@ Si5351 si5351;
 #define TFT_SCLK        13 //14
 #define TFT_MISO        12
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
-#else //T4
+#else // non T4
 #define BACKLIGHT_PIN   0  // unfortunately connected to 3V3 in DO7JBHs PCB 
 #define TFT_DC          20
 #define TFT_CS          21
@@ -1311,15 +1311,12 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_M
 #define TFT_MISO        12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
 #endif //T4
-#endif
 
-// push-buttons
+#elif defined(HARDWARE_F1FGV)
 
-#if defined(HARDWARE_F1FGV)
-
-TouchButton button1 = TouchButton(1, 5, "Audio", "EQ");
-TouchButton button2 = TouchButton(2, 5, "Band", "select");
-TouchButton button3 = TouchButton(3, 5, "Modul", "select");
+TouchButton button1 = TouchButton(1, 5, "Band-", "EQ");
+TouchButton button2 = TouchButton(2, 5, "Band+", "");
+TouchButton button3 = TouchButton(3, 5, "Modul", "ation");
 TouchButton button4 = TouchButton(5, 5, "Top", "func");
 TouchButton button5 = TouchButton(4, 5, "Tune", "digit");
 TouchButton button6 = TouchButton(6, 5, "Top", "menu");
@@ -1327,6 +1324,8 @@ TouchButton button7 = TouchButton(7, 5, "Bottom", "func");
 TouchButton button8 = TouchButton(8, 5, "Bottom", "menu");
 
 #include <Encoder.h>
+// make a subclass with summy setDisplay and processTouch 
+// so that code does can define either hardware or touch
 class HardwareEncoder: public Encoder {
   using Encoder::Encoder;  // inherit constructors
   public:
@@ -1338,20 +1337,19 @@ class HardwareEncoder: public Encoder {
 #if !defined(HARDWARE_ENCODER_1)
 TouchEncoder tune(4, 240, "tune");
 #else
-HardwareEncoder tune(1, 0); //(26, 28);
+HardwareEncoder tune(1, 0); // button5 is the corresponding switch
 #endif
 
 #if !defined(HARDWARE_ENCODER_2)
-TouchEncoder filter(6, 240, "value");
+TouchEncoder filter(6, 240, "top val");
 #else
-HardwareEncoder filter(1, 0); //(26, 28);
+HardwareEncoder filter(1, 0); // button6 is the corresponding switch
 #endif
 
-
 #if !defined(HARDWARE_ENCODER_3)
-TouchEncoder encoder3(8, 240, "value");
+TouchEncoder encoder3(8, 240, "bot val");
 #else
-HardwareEncoder encoder3(1, 0); //(26, 28);
+HardwareEncoder encoder3(1, 0); // button8 is the corresponding switch
 #endif
 
 void drawButtons(RA8875_adaptor* pTFT){
@@ -1382,30 +1380,6 @@ void processTouches(uint16_t x, uint16_t y){
   encoder3.processTouch(x,y);
 }
 
-
-#else
-
-#define   BUTTON_1_PIN      24 // encoder2 button = button3SW
-#define   BUTTON_2_PIN      26 // BAND+ = button2SW
-#define   BUTTON_1_PIN      28 // ???
-#define   BUTTON_4_PIN      30 //
-#define   BUTTON_5_PIN      25 // this is the pushbutton pin of the tune encoder
-#define   BUTTON_6_PIN      27 // this is the pushbutton pin of the filter encoder
-#define   BUTTON_7_PIN      32 // this is the menu button pin
-#define   BUTTON_8_PIN      29  //27 // this is the pushbutton pin of encoder 3
-
-Bounce button1 = Bounce(BUTTON_1_PIN, 50);
-Bounce button2 = Bounce(BUTTON_2_PIN, 50);
-Bounce button3 = Bounce(BUTTON_3_PIN, 50);
-Bounce button4 = Bounce(BUTTON_4_PIN, 50);
-Bounce button5 = Bounce(BUTTON_5_PIN, 50);
-Bounce button6 = Bounce(BUTTON_6_PIN, 50);
-Bounce button7 = Bounce(BUTTON_7_PIN, 50);
-Bounce button8 = Bounce(BUTTON_8_PIN, 50);
-
-#endif
-
-#if defined(HARDWARE_F1FGV)
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
 #define RA8875_RESET 9                                      // RA8875
@@ -1452,7 +1426,6 @@ void processTouchDisplay(){
     }
   }
 }
-
 
 
 #elif defined (HARDWARE_DO7JBH)
@@ -1585,7 +1558,8 @@ Bounce button8 = Bounce(BUTTON_8_PIN, 50);
 
 float DD4WH_RF_gain = 6.0;
 
-#else // push-buttons
+#else // push-buttons and connections unmodified from initial project
+// described here: https://github.com/DD4WH/Teensy-ConvolutionSDR/blob/master/Teensy%20Convolution%20SDR%20pinout.txt
 // Optical Encoder connections
 Encoder tune      (16, 17);
 Encoder filter    (1, 2);
@@ -12742,19 +12716,21 @@ void encoders () {
     {
       //          if(encoder2_change < 0) SAMPLE_RATE--;
       //            else SAMPLE_RATE++;
-#ifdef DEBUG
-      Serial.println(encoder2_change);
-      Serial.println((float)encoder2_change);
+#if DEBUG
+      Serial.print("sample rate encoder: ");
+      Serial.print(encoder2_change);
+      Serial.print(" ");
+      Serial.print((float)encoder2_change);
+      Serial.println("");
 #endif
-      if (encoder2_change  * ENCODER_FACTOR < -1)
+      if (encoder2_change  * ENCODER_FACTOR <= -1)
       {
         SAMPLE_RATE -= 1;
       }
-      else if (encoder2_change  * ENCODER_FACTOR > 1)
+      else if (encoder2_change  * ENCODER_FACTOR >= 1)
       {
         SAMPLE_RATE += 1;
       }
-
       wait_flag = 1;
       set_samplerate ();
     }
@@ -19104,7 +19080,7 @@ void AudioEqualizer_display_response (uint16_t nFreq, float32_t *rdb)
   int pos_y = BW_indicator_y;
   float32_t freq_span = 1.0f;
   //uint16_t base_y = spectrum_y - 1;
-  Serial.print("sepctrum_y = ");
+  Serial.print("spectrum_y = ");
   Serial.println(spectrum_y);
   // first delete display
   tft.fillRect(0, spectrum_y - 1, 268, 241 - spectrum_y, ILI9341_BLACK);
